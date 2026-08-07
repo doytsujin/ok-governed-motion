@@ -1,0 +1,84 @@
+# Build the page and publish it to GitHub Pages.
+#
+# ## Manual trigger, deliberately
+#
+# `workflow_dispatch` only. A push-triggered deploy would publish the moment
+# this file landed, and whether this repository's contents should be reachable
+# from a public URL is not a decision a workflow file should make quietly. Add
+# a `push:` trigger once that has been decided.
+#
+# GitHub Pages on a **private** repository requires a paid plan. On a free plan
+# this workflow builds and then fails at the deploy step, which is a clearer
+# outcome than silently publishing a private repo's contents.
+#
+# The page is a simulation and says so in its own header. That disclaimer is
+# load-bearing if this is ever made public: it models an architecture and
+# measures nothing about a physical system.
+name: Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-pages-${{ hashFiles('Cargo.lock') }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      # Tests run before anything is published. Deploying a build whose tests
+      # failed is worse than not deploying.
+      - name: Test
+        run: cargo test --workspace --release
+
+      - name: Build
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Report the payload
+        run: |
+          du -sh web/dist
+          find web/dist -type f -size +200k -exec ls -lh {} \;
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

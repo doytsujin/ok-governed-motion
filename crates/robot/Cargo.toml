@@ -1,0 +1,9 @@
+[package]
+name = "robot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A two-link planar manipulator and the workcell it moves plates around"
+
+[dependencies]
+gov = { path = "../gov" }

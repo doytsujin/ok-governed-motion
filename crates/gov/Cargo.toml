@@ -1,0 +1,10 @@
+[package]
+name = "gov"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Policy-aware supervisory control plane: admission before actuation"
+
+# No dependencies, deliberately. The whole point of this crate is that the
+# refusal guarantee is checkable by reading it.
+[dependencies]

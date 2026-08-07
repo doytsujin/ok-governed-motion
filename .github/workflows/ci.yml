@@ -1,0 +1,52 @@
+# Tests on every push. Separate from the deploy on purpose: publishing is a
+# decision, running the tests is not.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ hashFiles('Cargo.lock') }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # The control plane, the arm, and fault discrimination.
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      # `web/pkg` is generated and git-ignored, so the wasm has to be built
+      # before anything can typecheck against it — the bindings are where the
+      # Sim type comes from.
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
+      # The web half is tested too — a typecheck-only CI would let a broken
+      # view helper through, and the gate diagram is view code. `npm run build`
+      # runs wasm-pack, then tsc, then the bundle.
+      - name: web
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+          npm test

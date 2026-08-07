@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Governed motion — admission before actuation</title>
+    <!-- Inline, so the page makes no request the build does not account for.
+         A stray favicon 404 is harmless but it is noise in a console that
+         should stay empty enough for a real error to stand out. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230e1116'/%3E%3Cpath d='M3 11h10M8 11V5' stroke='%2358a6ff' stroke-width='1.6' fill='none'/%3E%3Ccircle cx='8' cy='4' r='2' fill='%23f0883e'/%3E%3C/svg%3E"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0e1116;
+        --panel: #161b22;
+        --line: #262d36;
+        --ink: #d7dee7;
+        --dim: #8b95a3;
+        --ok: #3fb950;
+        --refuse: #f0883e;
+        --bad: #f85149;
+        --accent: #58a6ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
+      }
+      header {
+        padding: 18px 22px 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; }
+      .sub { color: var(--dim); font-size: 13px; max-width: 76ch; }
+      .disclaimer {
+        margin-top: 10px; padding: 8px 11px; font-size: 12px;
+        border: 1px solid var(--line); border-left: 3px solid var(--refuse);
+        border-radius: 4px; color: var(--dim); max-width: 76ch;
+      }
+      main {
+        display: grid; gap: 14px; padding: 14px 22px 40px;
+        grid-template-columns: minmax(320px, 1.35fr) minmax(280px, 1fr);
+      }
+      @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+      .panel {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 6px; padding: 12px 14px;
+      }
+      .panel h2 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+        color: var(--dim); margin: 0 0 10px; font-weight: 600;
+      }
+      canvas { width: 100%; height: auto; display: block; border-radius: 4px; }
+      .fsm { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+      .node {
+        padding: 5px 9px; border: 1px solid var(--line); border-radius: 4px;
+        font-size: 11px; letter-spacing: .04em; color: var(--dim);
+        background: #10151b; transition: all .12s;
+      }
+      .node.on { color: #0e1116; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+      .node.gate { border-color: var(--refuse); }
+      .gatelabel { font-size: 11px; color: var(--dim); margin-bottom: 10px; }
+      .decision { padding: 9px 11px; border-radius: 4px; border: 1px solid var(--line); font-size: 13px; }
+      .decision.ok { border-color: var(--ok); }
+      .decision.no { border-color: var(--refuse); }
+      .pill { font: 11px/1 ui-monospace, monospace; padding: 3px 6px; border-radius: 3px; background: #10151b; border: 1px solid var(--line); }
+      label.row { display: flex; align-items: center; gap: 8px; margin: 7px 0; font-size: 13px; }
+      label.row input[type="range"] { flex: 1; }
+      select, button {
+        background: #10151b; color: var(--ink); border: 1px solid var(--line);
+        border-radius: 4px; padding: 5px 8px; font: inherit; font-size: 13px;
+      }
+      button { cursor: pointer; }
+      button:hover { border-color: var(--accent); }
+      table { width: 100%; border-collapse: collapse; font: 11px/1.45 ui-monospace, monospace; }
+      td { padding: 2px 5px 2px 0; vertical-align: top; white-space: nowrap; }
+      td.trace { color: var(--dim); }
+      tr.refuse td { color: var(--refuse); }
+      tr.ok td { color: var(--ok); }
+      #log { max-height: 260px; overflow-y: auto; }
+      .inv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #1b2129; }
+      .inv:last-child { border-bottom: 0; }
+      .inv .v { font: 11px/1.4 ui-monospace, monospace; }
+      .inv .v.pass { color: var(--ok); }
+      .inv .v.fail { color: var(--bad); }
+      .stats { display: flex; gap: 16px; font: 12px/1 ui-monospace, monospace; color: var(--dim); margin-top: 8px; }
+      .stats b { color: var(--ink); font-weight: 600; }
+      .hint { font-size: 12px; color: var(--dim); margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Governed motion — admission before actuation</h1>
+      <div class="sub">
+        A manipulator that cannot be commanded without a policy decision. Every
+        intent is evaluated during <b>Reasoning</b>; a refusal returns to
+        <b>Idle</b> without entering Planning or Executing, so the arm has no
+        path to motion that skips the gate.
+      </div>
+      <div class="disclaimer">
+        <b>A demonstrator, not an experiment.</b> A two-link planar arm and a
+        discrete lifecycle model: no physics, no hardware, no sensing. The
+        policies, the workcell, and the conditions that trigger a refusal were
+        all written by the same hand, so what you are watching is an
+        architecture doing what it was constructed to do — <b>this is not
+        evidence that a real robot is safer.</b>
+        <br /><br />
+        Two things it assumes away in particular. The supervisor is handed true
+        workcell state directly, whereas in a real cell the hard question is
+        whether the workspace <i>is</i> occupied — sensing, latency, partial
+        observability. And authorization here can never go stale, because facts
+        are re-resolved every tick; leases, revocation and mid-motion
+        re-checking are not modelled at all. The compile-time guarantee also
+        binds only code routed through this crate's interface: a vendor SDK,
+        a separate process, or firmware sits outside it entirely.
+        <br /><br />
+        This layer would sit <i>above</i> functional safety — interlocks,
+        e-stops, safety-rated controllers — and never replaces any of it.
+      </div>
+    </header>
+
+    <main>
+      <div>
+        <div class="panel">
+          <h2>Workcell</h2>
+          <canvas id="cell" width="720" height="470"></canvas>
+          <div class="stats">
+            <span>completed <b id="s-done">0</b></span>
+            <span>refused <b id="s-ref">0</b></span>
+            <span>queued <b id="s-q">0</b></span>
+            <span>t <b id="s-t">0.0</b>s</span>
+          </div>
+        </div>
+        <div class="panel" style="margin-top: 14px">
+          <h2>Trace — every event carries its intent's id</h2>
+          <div id="log"><table id="logtab"></table></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="panel">
+          <h2>Lifecycle</h2>
+          <div class="fsm" id="fsm"></div>
+          <div class="gatelabel">
+            The gate sits between <b>Reasoning</b> and <b>Planning</b>. Nothing
+            to its right runs for a refused intent.
+          </div>
+          <div class="decision" id="decision">no decision yet</div>
+        </div>
+
+        <div class="panel" style="margin-top: 14px">
+          <h2>Environment — change it and watch the next decision</h2>
+          <label class="row"><input type="checkbox" id="human" /> operator in the workspace</label>
+          <label class="row"><input type="checkbox" id="sterile" /> sterile zone locked</label>
+          <label class="row">
+            max dwell
+            <input type="range" id="dwell" min="1" max="12" step="0.5" value="8" />
+            <span class="pill" id="dwellv">8.0 s</span>
+          </label>
+          <label class="row"><input type="checkbox" id="auto" checked /> keep submitting intents</label>
+          <div class="hint">
+            Lock the sterile zone and the next transfer to the bench is refused
+            before the arm moves — the arm simply never starts.
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 14px">
+          <h2>Runtime invariants</h2>
+          <label class="row">
+            inject fault
+            <select id="fault"></select>
+          </label>
+          <div id="invs"></div>
+          <div class="hint" id="faultwhat">
+            The faults corrupt a <i>copy of the record</i>, never the running
+            system. Each one should drop exactly one invariant — that is what
+            shows the checker discriminates instead of always agreeing.
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
