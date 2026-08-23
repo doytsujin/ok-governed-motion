@@ -4,6 +4,18 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="author" content="Alexander Chernov" />
+    <script>
+      // Applied before first paint so a saved dark choice never flashes light.
+      // Light is the default and the system preference is deliberately not
+      // consulted: the page looks the same to every first-time reader until
+      // they choose otherwise.
+      (function () {
+        try {
+          var t = localStorage.getItem("gm-theme");
+          if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
     <title>Governed motion — admission before actuation</title>
     <!-- Inline, so the page makes no request the build does not account for.
          A stray favicon 404 is harmless but it is noise in a console that
@@ -13,7 +25,38 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230e1116'/%3E%3Cpath d='M3 11h10M8 11V5' stroke='%2358a6ff' stroke-width='1.6' fill='none'/%3E%3Ccircle cx='8' cy='4' r='2' fill='%23f0883e'/%3E%3C/svg%3E"
     />
     <style>
+      /* Light is the default. The canvas colours live here too, so the arm
+         and the page cannot drift apart: main.ts reads these variables rather
+         than carrying literals of its own. */
       :root {
+        color-scheme: light;
+        --bg: #ffffff;
+        --panel: #f6f8fa;
+        --line: #d1d9e0;
+        --ink: #1f2328;
+        --dim: #59636e;
+        --ok: #1a7f37;
+        --refuse: #bc4c00;
+        --bad: #cf222e;
+        --accent: #0969da;
+        --raised: #f6f8fa;
+        --onaccent: #ffffff;
+        --hairline: #e4e8ed;
+
+        --c-reach-fill: #f0f3f6;
+        --c-reach-line: #d1d9e0;
+        --c-sterile-fill: rgba(9, 105, 218, 0.08);
+        --c-sterile-fill-locked: rgba(188, 76, 0, 0.12);
+        --c-sterile-line: #b8c2cc;
+        --c-station-fill: #ffffff;
+        --c-station-line: #ccd5dd;
+        --c-arm: #8b98a5;
+        --c-joint-fill: #d1d9e0;
+        --c-joint-line: #aab4bf;
+        --c-grip-empty: #eef2f5;
+      }
+
+      :root[data-theme="dark"] {
         color-scheme: dark;
         --bg: #0e1116;
         --panel: #161b22;
@@ -24,6 +67,21 @@
         --refuse: #f0883e;
         --bad: #f85149;
         --accent: #58a6ff;
+        --raised: #10151b;
+        --onaccent: #0e1116;
+        --hairline: #1b2129;
+
+        --c-reach-fill: #11161d;
+        --c-reach-line: #1e252e;
+        --c-sterile-fill: rgba(88, 166, 255, 0.09);
+        --c-sterile-fill-locked: rgba(240, 136, 62, 0.13);
+        --c-sterile-line: #2b3947;
+        --c-station-fill: #161d25;
+        --c-station-line: #2a323c;
+        --c-arm: #4a5563;
+        --c-joint-fill: #262d36;
+        --c-joint-line: #3d4650;
+        --c-grip-empty: #1c232b;
       }
       * { box-sizing: border-box; }
       body {
@@ -33,10 +91,19 @@
         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif;
       }
       header {
+        position: relative;
         padding: 18px 22px 12px;
         border-bottom: 1px solid var(--line);
       }
-      h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; }
+      h1 { font-size: 17px; margin: 0 0 4px; font-weight: 600; padding-right: 84px; }
+      #theme {
+        position: absolute; top: 16px; right: 22px;
+        font: 11px/1 ui-monospace, monospace; padding: 6px 10px;
+        border-radius: 4px; cursor: pointer;
+        background: var(--raised); color: var(--dim);
+        border: 1px solid var(--line);
+      }
+      #theme:hover { color: var(--ink); border-color: var(--dim); }
       .sub { color: var(--dim); font-size: 13px; max-width: 76ch; }
       .disclaimer {
         margin-top: 10px; padding: 8px 11px; font-size: 12px;
@@ -61,19 +128,19 @@
       .node {
         padding: 5px 9px; border: 1px solid var(--line); border-radius: 4px;
         font-size: 11px; letter-spacing: .04em; color: var(--dim);
-        background: #10151b; transition: all .12s;
+        background: var(--raised); transition: all .12s;
       }
-      .node.on { color: #0e1116; background: var(--accent); border-color: var(--accent); font-weight: 700; }
+      .node.on { color: var(--onaccent); background: var(--accent); border-color: var(--accent); font-weight: 700; }
       .node.gate { border-color: var(--refuse); }
       .gatelabel { font-size: 11px; color: var(--dim); margin-bottom: 10px; }
       .decision { padding: 9px 11px; border-radius: 4px; border: 1px solid var(--line); font-size: 13px; }
       .decision.ok { border-color: var(--ok); }
       .decision.no { border-color: var(--refuse); }
-      .pill { font: 11px/1 ui-monospace, monospace; padding: 3px 6px; border-radius: 3px; background: #10151b; border: 1px solid var(--line); }
+      .pill { font: 11px/1 ui-monospace, monospace; padding: 3px 6px; border-radius: 3px; background: var(--raised); border: 1px solid var(--line); }
       label.row { display: flex; align-items: center; gap: 8px; margin: 7px 0; font-size: 13px; }
       label.row input[type="range"] { flex: 1; }
       select, button {
-        background: #10151b; color: var(--ink); border: 1px solid var(--line);
+        background: var(--raised); color: var(--ink); border: 1px solid var(--line);
         border-radius: 4px; padding: 5px 8px; font: inherit; font-size: 13px;
       }
       button { cursor: pointer; }
@@ -84,7 +151,7 @@
       tr.refuse td { color: var(--refuse); }
       tr.ok td { color: var(--ok); }
       #log { max-height: 260px; overflow-y: auto; }
-      .inv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid #1b2129; }
+      .inv { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--hairline); }
       .inv:last-child { border-bottom: 0; }
       .inv .v { font: 11px/1.4 ui-monospace, monospace; }
       .inv .v.pass { color: var(--ok); }
@@ -104,6 +171,7 @@
   </head>
   <body>
     <header>
+      <button id="theme" type="button" aria-label="Switch colour theme">Dark</button>
       <h1>Governed motion — admission before actuation</h1>
       <div class="sub">
         A manipulator that cannot be commanded without a policy decision. Every
@@ -199,6 +267,26 @@
       released under the MIT licence.
       <a href="https://github.com/doytsujin/ok-governed-motion">Source</a>.
     </footer>
+
+    <script>
+      // The canvas cannot read CSS variables on its own, so a theme change
+      // announces itself and main.ts re-reads them.
+      (function () {
+        var root = document.documentElement;
+        var btn = document.getElementById("theme");
+        function label() {
+          btn.textContent = root.dataset.theme === "dark" ? "Light" : "Dark";
+        }
+        label();
+        btn.addEventListener("click", function () {
+          var next = root.dataset.theme === "dark" ? "light" : "dark";
+          root.dataset.theme = next;
+          try { localStorage.setItem("gm-theme", next); } catch (e) {}
+          label();
+          dispatchEvent(new Event("themechange"));
+        });
+      })();
+    </script>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

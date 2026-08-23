@@ -20,6 +20,38 @@ import {
 
 const REACH = 0.85; // L1 + L2 from the robot crate
 
+/**
+ * Canvas colours come from the stylesheet rather than from literals here, so
+ * the two themes have a single source of truth and the arm cannot end up dark
+ * on a light page. Read once, and again whenever the theme changes.
+ */
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = (n: string) => cs.getPropertyValue(n).trim();
+  return {
+    reachFill: v("--c-reach-fill"),
+    reachLine: v("--c-reach-line"),
+    sterileFill: v("--c-sterile-fill"),
+    sterileFillLocked: v("--c-sterile-fill-locked"),
+    sterileLine: v("--c-sterile-line"),
+    stationFill: v("--c-station-fill"),
+    stationLine: v("--c-station-line"),
+    arm: v("--c-arm"),
+    jointFill: v("--c-joint-fill"),
+    jointLine: v("--c-joint-line"),
+    gripEmpty: v("--c-grip-empty"),
+    accent: v("--accent"),
+    ok: v("--ok"),
+    refuse: v("--refuse"),
+    dim: v("--dim"),
+  };
+}
+
+let C = readColors();
+addEventListener("themechange", () => {
+  C = readColors();
+});
+
 interface Snapshot {
   t: number;
   state: string;
@@ -110,9 +142,9 @@ async function main() {
     // Reachable workspace.
     ctx.beginPath();
     ctx.arc(p.ox, p.oy, REACH * p.scale, Math.PI, 2 * Math.PI);
-    ctx.fillStyle = "#11161d";
+    ctx.fillStyle = C.reachFill;
     ctx.fill();
-    ctx.strokeStyle = "#1e252e";
+    ctx.strokeStyle = C.reachLine;
     ctx.stroke();
 
     // Sterile zone: a band around the stations marked sterile.
@@ -121,14 +153,14 @@ async function main() {
       const [x, y] = toPx(p, st.x, st.y);
       ctx.beginPath();
       ctx.arc(x, y, 0.19 * p.scale, 0, Math.PI * 2);
-      ctx.fillStyle = s.sterileLocked ? "rgba(240,136,62,.13)" : "rgba(88,166,255,.09)";
+      ctx.fillStyle = s.sterileLocked ? C.sterileFillLocked : C.sterileFill;
       ctx.fill();
-      ctx.strokeStyle = s.sterileLocked ? "#f0883e" : "#2b3947";
+      ctx.strokeStyle = s.sterileLocked ? C.refuse : C.sterileLine;
       ctx.setLineDash([4, 3]);
       ctx.stroke();
       ctx.setLineDash([]);
       if (s.sterileLocked) {
-        ctx.fillStyle = "#f0883e";
+        ctx.fillStyle = C.refuse;
         ctx.font = "11px ui-monospace, monospace";
         ctx.textAlign = "center";
         ctx.fillText("LOCKED", x, y - 0.19 * p.scale - 7);
@@ -140,17 +172,17 @@ async function main() {
       const [x, y] = toPx(p, st.x, st.y);
       ctx.beginPath();
       ctx.roundRect(x - 26, y - 15, 52, 30, 4);
-      ctx.fillStyle = "#161d25";
+      ctx.fillStyle = C.stationFill;
       ctx.fill();
-      ctx.strokeStyle = i === s.current.dest ? "#58a6ff" : "#2a323c";
+      ctx.strokeStyle = i === s.current.dest ? C.accent : C.stationLine;
       ctx.stroke();
       if (s.plates[i]) {
         ctx.beginPath();
         ctx.arc(x, y, 8, 0, Math.PI * 2);
-        ctx.fillStyle = "#3fb950";
+        ctx.fillStyle = C.ok;
         ctx.fill();
       }
-      ctx.fillStyle = "#8b95a3";
+      ctx.fillStyle = C.dim;
       ctx.font = "11px ui-sans-serif, system-ui";
       ctx.textAlign = "center";
       ctx.fillText(st.name, x, y + 28);
@@ -162,7 +194,7 @@ async function main() {
     const [tx, ty] = toPx(p, s.tip[0], s.tip[1]);
     const moving = s.state === "EXECUTING";
     ctx.lineCap = "round";
-    ctx.strokeStyle = moving ? "#58a6ff" : "#4a5563";
+    ctx.strokeStyle = moving ? C.accent : C.arm;
     ctx.lineWidth = 9;
     ctx.beginPath();
     ctx.moveTo(bx, by);
@@ -175,25 +207,25 @@ async function main() {
     ] as const) {
       ctx.beginPath();
       ctx.arc(jx, jy, r, 0, Math.PI * 2);
-      ctx.fillStyle = "#262d36";
+      ctx.fillStyle = C.jointFill;
       ctx.fill();
-      ctx.strokeStyle = "#3d4650";
+      ctx.strokeStyle = C.jointLine;
       ctx.lineWidth = 2;
       ctx.stroke();
     }
     // Gripper, carrying a plate or not.
     ctx.beginPath();
     ctx.arc(tx, ty, 9, 0, Math.PI * 2);
-    ctx.fillStyle = s.held ? "#3fb950" : "#1c232b";
+    ctx.fillStyle = s.held ? C.ok : C.gripEmpty;
     ctx.fill();
-    ctx.strokeStyle = "#4a5563";
+    ctx.strokeStyle = C.arm;
     ctx.lineWidth = 2;
     ctx.stroke();
 
     // Operator in the cell — the reason a refusal is about to happen.
     if (s.human) {
       const [hx, hy] = toPx(p, -0.62, 0.05);
-      ctx.fillStyle = "#f0883e";
+      ctx.fillStyle = C.refuse;
       ctx.beginPath();
       ctx.arc(hx, hy - 16, 7, 0, Math.PI * 2);
       ctx.fill();
