@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="author" content="Alexander Chernov" />
     <title>Governed motion — admission before actuation</title>
     <!-- Inline, so the page makes no request the build does not account for.
          A stray favicon 404 is harmless but it is noise in a console that
@@ -91,6 +92,14 @@
       .stats { display: flex; gap: 16px; font: 12px/1 ui-monospace, monospace; color: var(--dim); margin-top: 8px; }
       .stats b { color: var(--ink); font-weight: 600; }
       .hint { font-size: 12px; color: var(--dim); margin-top: 8px; }
+      footer {
+        padding: 12px 22px 18px;
+        border-top: 1px solid var(--line);
+        color: var(--dim);
+        font-size: 12px;
+      }
+      footer a { color: var(--accent); text-decoration: none; }
+      footer a:hover { text-decoration: underline; }
     </style>
   </head>
   <body>
@@ -184,6 +193,12 @@
         </div>
       </div>
     </main>
+
+    <footer>
+      A demonstrator by Alexander Chernov. &copy; 2026 Alexander Chernov,
+      released under the MIT licence.
+      <a href="https://github.com/doytsujin/ok-governed-motion">Source</a>.
+    </footer>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

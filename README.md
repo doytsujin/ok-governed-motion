@@ -50,4 +50,4 @@ ground-truth state supplied by the simulation, so nothing here measures a real
 manipulator or a real control loop, and no figure it shows is a hardware
 measurement.
 
-Apache-2.0.
+MIT. See [LICENSE](LICENSE).
