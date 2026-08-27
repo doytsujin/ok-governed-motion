@@ -51,6 +51,18 @@ fn mixed_log() -> EventLog {
     for i in 90..150 {
         agent.tick(0.1, i as f32 * 0.1, &blocked, &mut robot, &mut log);
     }
+
+    // A third intent, submitted with the authority unreachable. Without it the
+    // two indeterminate invariants would pass vacuously, which is the failure
+    // mode this whole test file exists to avoid.
+    agent.evaluator = gov::Evaluator {
+        reachable: false,
+        latency_s: 0.0,
+    };
+    agent.submit(Intent::new(3, 0, 1, 7));
+    for i in 150..210 {
+        agent.tick(0.1, i as f32 * 0.1, &clean, &mut robot, &mut log);
+    }
     log
 }
 
@@ -62,6 +74,12 @@ fn expected_victim(f: Fault) -> Option<Invariant> {
         Fault::NoPolicyId => Some(Invariant::PolicyIdOnRefusal),
         Fault::LeakPlanner => Some(Invariant::NoPlanAfterRefusal),
         Fault::LeakDriver => Some(Invariant::NoActuationAfterRefusal),
+        Fault::NoIndeterminateReason => Some(Invariant::ReasonOnIndeterminate),
+        // Removing the terminal record of an unanswered intent leaves a gap,
+        // and a gap is what `TerminalReconstructable` is for. This is the
+        // fault that shows the invariant is satisfied by a record rather than
+        // by the intent having quietly ended.
+        Fault::NoIndeterminateTerminal => Some(Invariant::TerminalReconstructable),
     }
 }
 
@@ -78,6 +96,10 @@ fn the_unperturbed_log_satisfies_every_invariant() {
         .events
         .iter()
         .any(|e| e.kind == gov::EventKind::PolicyRefuse));
+    assert!(log
+        .events
+        .iter()
+        .any(|e| e.kind == gov::EventKind::PolicyIndeterminate));
 
     for (inv, ok) in invariant::check_all(&log, None) {
         assert!(ok, "clean log violated: {}", inv.as_str());

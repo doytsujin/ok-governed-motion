@@ -78,6 +78,12 @@ pub enum LastDecision {
         intent: crate::IntentId,
         policy: policy::PolicyId,
     },
+    /// Nobody decided. Kept apart from `Refused` so a caller cannot read one
+    /// as the other, which is the same reason the log keeps them apart.
+    Indeterminate {
+        intent: crate::IntentId,
+        reason: policy::IndeterminateReason,
+    },
 }
 
 pub struct Agent {
@@ -87,6 +93,10 @@ pub struct Agent {
     pub last: LastDecision,
     pub completed: u32,
     pub refused: u32,
+    pub indeterminate: u32,
+    /// Whether the policy authority can answer. Settable so a scenario can take
+    /// the governor away and show what the record does about it.
+    pub evaluator: policy::Evaluator,
     timer: f32,
     telemetry_due: f32,
     current: Option<Intent>,
@@ -104,6 +114,8 @@ impl Agent {
             last: LastDecision::None,
             completed: 0,
             refused: 0,
+            indeterminate: 0,
+            evaluator: policy::Evaluator::default(),
             timer: 0.0,
             telemetry_due: 0.0,
             current: None,
@@ -161,8 +173,36 @@ impl Agent {
                 }
                 // The gate. Nothing below this point exists for a refusal.
                 let intent = self.current.clone().expect("reasoning without an intent");
-                match policy::evaluate(&intent, facts) {
-                    Err(refusal) => {
+                match policy::adjudicate(&intent, facts, &self.evaluator, REASON_S) {
+                    // Nobody decided. Terminal, recorded, and no `Approved`
+                    // exists — so the driver is unreachable for exactly the
+                    // reason it is unreachable after a refusal, and the log
+                    // says which of the two happened.
+                    policy::Verdict::Indeterminate(ind) => {
+                        log.record_indeterminate(
+                            t,
+                            EventKind::PolicyIndeterminate,
+                            intent.id,
+                            &intent.trace,
+                            ind.reason,
+                        );
+                        self.transition(State::Idle, t, log);
+                        log.record_indeterminate(
+                            t,
+                            EventKind::IntentIndeterminate,
+                            intent.id,
+                            &intent.trace,
+                            ind.reason,
+                        );
+                        self.indeterminate += 1;
+                        self.last = LastDecision::Indeterminate {
+                            intent: intent.id,
+                            reason: ind.reason,
+                        };
+                        self.current = None;
+                        self.approved = None;
+                    }
+                    policy::Verdict::Refused(refusal) => {
                         log.record_policy(
                             t,
                             EventKind::PolicyRefuse,
@@ -186,7 +226,7 @@ impl Agent {
                         self.current = None;
                         self.approved = None;
                     }
-                    Ok(approved) => {
+                    policy::Verdict::Approved(approved) => {
                         log.record(
                             t,
                             EventKind::PolicyOk,

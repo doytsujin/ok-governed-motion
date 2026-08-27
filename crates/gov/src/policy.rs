@@ -106,6 +106,116 @@ impl Approved {
     }
 }
 
+/// Why the authority could not answer.
+///
+/// Deliberately not a [`PolicyId`]. No policy refused this intent; the thing
+/// that could have refused it did not answer, and collapsing the two would put
+/// a rule's name on an outcome no rule produced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndeterminateReason {
+    /// The authority was not reachable at all.
+    EvaluatorUnavailable,
+    /// The authority was reachable and did not answer inside the budget.
+    EvaluatorTimeout,
+}
+
+impl IndeterminateReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EvaluatorUnavailable => "EVALUATOR_UNAVAILABLE",
+            Self::EvaluatorTimeout => "EVALUATOR_TIMEOUT",
+        }
+    }
+
+    pub fn rationale(self) -> &'static str {
+        match self {
+            Self::EvaluatorUnavailable => "the policy authority could not be reached",
+            Self::EvaluatorTimeout => "the policy authority did not answer within the budget",
+        }
+    }
+}
+
+/// An outcome that is neither permission nor refusal.
+///
+/// It exists so that "nobody decided" is a row rather than a hole. A fail-open
+/// and an approval leave the same trace three months later if the only evidence
+/// of non-evaluation is the absence of evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Indeterminate {
+    pub reason: IndeterminateReason,
+}
+
+/// The three things adjudication can conclude.
+///
+/// `Indeterminate` is terminal in exactly the way `Refused` is: no plan, no
+/// driver command, no [`Approved`]. What separates them is the record, and an
+/// operator reading it needs to tell "a rule said no" from "no rule answered".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    Approved(Approved),
+    Refused(Refusal),
+    Indeterminate(Indeterminate),
+}
+
+impl Verdict {
+    /// Only an approval yields the token that starts motion. Both other arms
+    /// return `None`, which is the whole point: indeterminacy is not a
+    /// weaker approval.
+    pub fn approved(self) -> Option<Approved> {
+        match self {
+            Self::Approved(a) => Some(a),
+            _ => None,
+        }
+    }
+}
+
+/// Whether the policy authority can answer, and how long it takes.
+///
+/// Separate from [`WorldFacts`] on purpose. The facts describe the cell; this
+/// describes the governor. A system that cannot distinguish "the workspace is
+/// occupied" from "I could not find out whether the workspace is occupied" is
+/// the failure this type exists to prevent.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Evaluator {
+    pub reachable: bool,
+    pub latency_s: f32,
+}
+
+impl Default for Evaluator {
+    fn default() -> Self {
+        Self { reachable: true, latency_s: 0.0 }
+    }
+}
+
+/// Adjudication: consult the authority, and if it cannot answer, say so.
+///
+/// [`evaluate`] is the policy decision and is a pure function of the intent and
+/// the facts. This wraps it with the one thing a pure function cannot express —
+/// that the authority may not be there. When it is not, the result is
+/// [`Verdict::Indeterminate`] and no [`Approved`] is minted, so execution
+/// remains unreachable by construction rather than by convention.
+pub fn adjudicate(
+    intent: &Intent,
+    facts: &WorldFacts,
+    evaluator: &Evaluator,
+    budget_s: f32,
+) -> Verdict {
+    if !evaluator.reachable {
+        return Verdict::Indeterminate(Indeterminate {
+            reason: IndeterminateReason::EvaluatorUnavailable,
+        });
+    }
+    if evaluator.latency_s > budget_s {
+        return Verdict::Indeterminate(Indeterminate {
+            reason: IndeterminateReason::EvaluatorTimeout,
+        });
+    }
+    match evaluate(intent, facts) {
+        Ok(a) => Verdict::Approved(a),
+        Err(r) => Verdict::Refused(r),
+    }
+}
+
 /// The reasoning phase. Runs before the planner exists, and is the only door
 /// to [`Approved`].
 pub fn evaluate(intent: &Intent, facts: &WorldFacts) -> Result<Approved, Refusal> {

@@ -25,7 +25,10 @@ pub mod policy;
 pub use fault::Fault;
 pub use fsm::{Agent, Manipulator, State};
 pub use log::{Event, EventKind, EventLog};
-pub use policy::{Approved, PolicyId, Refusal, WorldFacts, POLICY_IDS};
+pub use policy::{
+    Approved, Evaluator, Indeterminate, IndeterminateReason, PolicyId, Refusal, Verdict,
+    WorldFacts, POLICY_IDS,
+};
 
 /// Stations in the workcell. Kept as a plain index so this crate stays free of
 /// geometry — where station 2 actually *is* belongs to the robot, not to the

@@ -22,6 +22,12 @@ pub enum Invariant {
     NoPlanAfterRefusal,
     /// No intent both refuses and actuates. The headline property.
     NoActuationAfterRefusal,
+    /// Every indeterminate outcome names why the authority could not answer.
+    ReasonOnIndeterminate,
+    /// No intent both goes unanswered and actuates. The property that makes
+    /// fail-open visible: an authority that could not decide must not be
+    /// readable, later, as one that approved.
+    NoActuationAfterIndeterminate,
 }
 
 impl Invariant {
@@ -32,16 +38,20 @@ impl Invariant {
             Self::PolicyIdOnRefusal => "every refusal names its policy",
             Self::NoPlanAfterRefusal => "no planning after a refusal",
             Self::NoActuationAfterRefusal => "no actuation after a refusal",
+            Self::ReasonOnIndeterminate => "every indeterminate outcome names its reason",
+            Self::NoActuationAfterIndeterminate => "no actuation after an indeterminate outcome",
         }
     }
 }
 
-pub const ALL: [Invariant; 5] = [
+pub const ALL: [Invariant; 7] = [
     Invariant::TraceId,
     Invariant::TerminalReconstructable,
     Invariant::PolicyIdOnRefusal,
     Invariant::NoPlanAfterRefusal,
     Invariant::NoActuationAfterRefusal,
+    Invariant::ReasonOnIndeterminate,
+    Invariant::NoActuationAfterIndeterminate,
 ];
 
 /// `true` means the invariant holds over this log.
@@ -84,6 +94,20 @@ pub fn check(log: &EventLog, inv: Invariant, in_flight: Option<IntentId>) -> boo
                 .any(|e| e.kind == EventKind::PolicyRefuse);
             let actuated = log.for_intent(id).any(|e| e.kind.is_actuation());
             !(refused && actuated)
+        }),
+
+        Invariant::ReasonOnIndeterminate => log
+            .events
+            .iter()
+            .filter(|e| e.kind == EventKind::PolicyIndeterminate)
+            .all(|e| e.reason.is_some()),
+
+        Invariant::NoActuationAfterIndeterminate => log.intent_ids().into_iter().all(|id| {
+            let unanswered = log
+                .for_intent(id)
+                .any(|e| e.kind == EventKind::PolicyIndeterminate);
+            let actuated = log.for_intent(id).any(|e| e.kind.is_actuation());
+            !(unanswered && actuated)
         }),
     }
 }

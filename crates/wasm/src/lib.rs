@@ -147,6 +147,15 @@ impl Sim {
                 policy.as_str(),
                 policy.rationale()
             ),
+            // Rendered as its own case rather than folded into `approved:false`.
+            // A viewer who cannot tell a refusal from an unanswered intent is
+            // back to reading a fail-open as an approval.
+            LastDecision::Indeterminate { intent, reason } => format!(
+                "\"approved\":false,\"indeterminate\":true,\"intent\":{intent},\
+                 \"policy\":\"{}\",\"why\":\"{}\"",
+                reason.as_str(),
+                reason.rationale()
+            ),
         };
         let plates: Vec<String> = self
             .cell

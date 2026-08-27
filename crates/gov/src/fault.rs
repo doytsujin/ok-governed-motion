@@ -16,6 +16,8 @@ pub enum Fault {
     NoPolicyId,
     LeakPlanner,
     LeakDriver,
+    NoIndeterminateReason,
+    NoIndeterminateTerminal,
 }
 
 impl Fault {
@@ -27,6 +29,8 @@ impl Fault {
             Self::NoPolicyId => "no-policy-id",
             Self::LeakPlanner => "leak-planner",
             Self::LeakDriver => "leak-driver",
+            Self::NoIndeterminateReason => "no-indeterminate-reason",
+            Self::NoIndeterminateTerminal => "no-indeterminate-terminal",
         }
     }
 
@@ -36,19 +40,27 @@ impl Fault {
             Self::DropTrace => "an event loses its trace id",
             Self::NoTerminal => "an intent never reaches a terminal event",
             Self::NoPolicyId => "a refusal is recorded without naming its policy",
+            Self::NoIndeterminateReason => {
+                "an indeterminate outcome is recorded without naming its reason"
+            }
+            Self::NoIndeterminateTerminal => {
+                "an unanswered intent loses its terminal record and becomes a gap"
+            }
             Self::LeakPlanner => "a refused intent shows planning activity",
             Self::LeakDriver => "a refused intent shows the driver being commanded",
         }
     }
 }
 
-pub const ALL: [Fault; 6] = [
+pub const ALL: [Fault; 8] = [
     Fault::None,
     Fault::DropTrace,
     Fault::NoTerminal,
     Fault::NoPolicyId,
     Fault::LeakPlanner,
     Fault::LeakDriver,
+    Fault::NoIndeterminateReason,
+    Fault::NoIndeterminateTerminal,
 ];
 
 /// Returns a corrupted copy. The original is never touched — a fault must not
@@ -83,6 +95,32 @@ pub fn inject(log: &EventLog, fault: Fault) -> EventLog {
             }
         }
 
+        Fault::NoIndeterminateReason => {
+            if let Some(e) = out
+                .events
+                .iter_mut()
+                .find(|e| e.kind == EventKind::PolicyIndeterminate)
+            {
+                e.reason = None;
+            }
+        }
+
+        // The fault the comment thread was actually about: strip the terminal
+        // record of an unanswered intent and it becomes indistinguishable from
+        // an intent that was never submitted. If the checker cannot tell, then
+        // the record was never carrying the weight it appeared to.
+        Fault::NoIndeterminateTerminal => {
+            if let Some(idx) = out
+                .events
+                .iter()
+                .position(|e| e.kind == EventKind::IntentIndeterminate)
+            {
+                let victim = out.events[idx].intent;
+                out.events
+                    .retain(|e| !(e.intent == victim && e.kind == EventKind::IntentIndeterminate));
+            }
+        }
+
         Fault::LeakPlanner => leak(&mut out, EventKind::StatePlanning, "planner"),
         Fault::LeakDriver => leak(&mut out, EventKind::DriverCommand, "driver"),
     }
@@ -105,6 +143,7 @@ fn leak(log: &mut EventLog, kind: EventKind, source: &str) {
             intent,
             trace,
             policy: None,
+            reason: None,
         });
         log.events.sort_by(|a, b| a.t.total_cmp(&b.t));
     }

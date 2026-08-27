@@ -1,4 +1,31 @@
-# Next iteration: indeterminate as an explicit outcome
+# Indeterminate as an explicit outcome — BUILT 2026-08-27
+
+**Done.** `Verdict` is now three-way. `adjudicate` wraps the pure `evaluate`
+with the one thing a pure function cannot express — that the authority may not
+be there — and returns `Indeterminate` with a reason
+(`EVALUATOR_UNAVAILABLE`, `EVALUATOR_TIMEOUT`) instead of nothing.
+
+`PolicyIndeterminate` and `IntentIndeterminate` are event kinds, the second
+terminal, so `TerminalReconstructable` is satisfied by a record rather than by
+the intent having quietly ended. `Event` gained a `reason` field kept separate
+from `policy`, because an outcome no rule produced must not be filed under a
+rule's name. Two invariants: `ReasonOnIndeterminate` and
+`NoActuationAfterIndeterminate`. Two faults: `NoIndeterminateReason` and
+`NoIndeterminateTerminal` — the second strips the terminal row and is caught by
+`TerminalReconstructable`, which is what proves the record carries the weight
+rather than the silence.
+
+No `Approved` is minted on an indeterminate verdict, so the driver stays
+unreachable by construction rather than by convention — same guarantee as a
+refusal, different record. 18 tests, clippy clean.
+
+The original note follows.
+
+---
+
+## Original note
+
+
 
 Committed publicly 2026-08-27, in reply to a comment on the *Governed Motion*
 article. The question, from Virendra Vaishnav: does the control plane write a

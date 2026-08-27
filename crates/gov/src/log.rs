@@ -4,7 +4,10 @@
 //! reconstructable after the fact, and it is the first thing the invariant
 //! checker looks for — see [`crate::invariant`].
 
-use crate::{policy::PolicyId, IntentId};
+use crate::{
+    policy::{IndeterminateReason, PolicyId},
+    IntentId,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventKind {
@@ -17,7 +20,14 @@ pub enum EventKind {
     StatePublishing,
     PolicyOk,
     PolicyRefuse,
+    /// The authority did not answer. Carries the reason in `policy`'s place —
+    /// see `Event::indeterminate`.
+    PolicyIndeterminate,
     IntentRefused,
+    /// Terminal, and deliberately distinct from `IntentRefused`. An operator
+    /// reading the log must be able to tell a rule saying no from no rule
+    /// answering.
+    IntentIndeterminate,
     PlanComputed,
     DriverCommand,
     Telemetry,
@@ -36,7 +46,9 @@ impl EventKind {
             Self::StatePublishing => "STATE_PUBLISHING",
             Self::PolicyOk => "POLICY_OK",
             Self::PolicyRefuse => "POLICY_REFUSE",
+            Self::PolicyIndeterminate => "POLICY_INDETERMINATE",
             Self::IntentRefused => "INTENT_REFUSED",
+            Self::IntentIndeterminate => "INTENT_INDETERMINATE",
             Self::PlanComputed => "PLAN_COMPUTED",
             Self::DriverCommand => "DRIVER_COMMAND",
             Self::Telemetry => "TELEMETRY",
@@ -51,7 +63,10 @@ impl EventKind {
     }
 
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::IntentRefused | Self::IntentComplete)
+        matches!(
+            self,
+            Self::IntentRefused | Self::IntentComplete | Self::IntentIndeterminate
+        )
     }
 }
 
@@ -64,6 +79,9 @@ pub struct Event {
     /// Empty only when a fault has been injected to remove it.
     pub trace: String,
     pub policy: Option<PolicyId>,
+    /// Set only on the indeterminate events. Separate from `policy` because an
+    /// outcome no rule produced must not be recorded under a rule's name.
+    pub reason: Option<IndeterminateReason>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -80,6 +98,7 @@ impl EventLog {
             intent,
             trace: trace.to_string(),
             policy: None,
+            reason: None,
         });
     }
 
@@ -98,6 +117,32 @@ impl EventLog {
             intent,
             trace: trace.to_string(),
             policy: Some(policy),
+            reason: None,
+        });
+    }
+
+    /// Record an outcome the authority did not produce.
+    ///
+    /// Its own method rather than a flag on `record_policy`, so that writing an
+    /// indeterminate event without a reason takes deliberate effort — that is
+    /// the shape the `NoIndeterminateReason` fault injects, and the invariant
+    /// exists to catch it.
+    pub fn record_indeterminate(
+        &mut self,
+        t: f32,
+        kind: EventKind,
+        intent: IntentId,
+        trace: &str,
+        reason: IndeterminateReason,
+    ) {
+        self.events.push(Event {
+            t,
+            kind,
+            source: "policy_authority".to_string(),
+            intent,
+            trace: trace.to_string(),
+            policy: None,
+            reason: Some(reason),
         });
     }
 
